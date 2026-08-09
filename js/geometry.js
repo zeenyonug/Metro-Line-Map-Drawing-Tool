@@ -192,10 +192,88 @@ const Geometry = (() => {
   }
 
   /**
+   * 估算文本像素宽度
+   * 中日韩字符宽度 ≈ 字号，其他字符 ≈ 字号 * 0.55
+   */
+  function estimateTextWidth(text, fontSize) {
+    if (!text) return 0;
+    let width = 0;
+    for (const ch of text) {
+      const isCJK = /[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef]/.test(ch);
+      width += isCJK ? fontSize : fontSize * 0.55;
+    }
+    return width;
+  }
+
+  /**
+   * 线段与轴对齐矩形相交检测（Liang-Barsky 算法）
+   */
+  function segmentIntersectsBox(x1, y1, x2, y2, bx1, by1, bx2, by2) {
+    if (x1 >= bx1 && x1 <= bx2 && y1 >= by1 && y1 <= by2) return true;
+    if (x2 >= bx1 && x2 <= bx2 && y2 >= by1 && y2 <= by2) return true;
+
+    let t0 = 0, t1 = 1;
+    const dx = x2 - x1, dy = y2 - y1;
+    const p = [-dx, dx, -dy, dy];
+    const q = [x1 - bx1, bx2 - x1, y1 - by1, by2 - y1];
+
+    for (let i = 0; i < 4; i++) {
+      if (p[i] === 0) {
+        if (q[i] < 0) return false;
+      } else {
+        const t = q[i] / p[i];
+        if (p[i] < 0) {
+          if (t > t1) return false;
+          if (t > t0) t0 = t;
+        } else {
+          if (t < t0) return false;
+          if (t < t1) t1 = t;
+        }
+      }
+    }
+    return t0 <= t1;
+  }
+
+  /**
+   * 计算标签边界框（相对站点坐标）
+   * @param {string} dir - 方向
+   * @param {number} labelWidth - 标签宽度（取中英文最大值）
+   * @param {boolean} hasEn - 是否有英文标签
+   * @returns {{x1,y1,x2,y2}} 边界框
+   */
+  function getLabelBox(dir, labelWidth, hasEn) {
+    const cnFontSize = 13;
+    const enFontSize = 10;
+    const lineGap = 14;
+    const cnAscent = cnFontSize * 0.85;
+    const cnDescent = cnFontSize * 0.2;
+    const enDescent = enFontSize * 0.2;
+
+    const offset = getLabelOffset(dir);
+
+    let x1, x2;
+    if (offset.anchor === 'start') {
+      x1 = offset.x;
+      x2 = offset.x + labelWidth;
+    } else if (offset.anchor === 'end') {
+      x1 = offset.x - labelWidth;
+      x2 = offset.x;
+    } else {
+      x1 = offset.x - labelWidth / 2;
+      x2 = offset.x + labelWidth / 2;
+    }
+
+    const y1 = offset.y - cnAscent;
+    const y2 = hasEn ? (offset.y + lineGap + enDescent) : (offset.y + cnDescent);
+
+    return { x1, y1, x2, y2 };
+  }
+
+  /**
    * 自动计算站点标签的最佳位置
-   * 分析站点连接的所有线路实际碰到站点的方向，选择线路未占用的方向放置标签
-   * 注意：线路路径采用"先45°斜线再直线"算法，故以实际路径第一段方向为准，
-   * 而非站点到邻居的直线方向。
+   * 原则：标签不能挡住任何线路。
+   * 根据中英文文本长度估算标签边界框，检测与实际线路路径段的相交情况，
+   * 选择不相交（或相交最少）的方向。优先基本方向，其次对角方向。
    * @param {Object} station - 站点对象
    * @param {Array} lines - 所有线路
    * @param {Array} stations - 所有站点
@@ -205,20 +283,11 @@ const Geometry = (() => {
     const stationMap = {};
     stations.forEach(s => { stationMap[s.id] = s; });
 
-    // 8 个方向，统计每个方向被线路碰到的次数
-    const dirCount = {
-      'right': 0, 'bottom-right': 0, 'bottom': 0, 'bottom-left': 0,
-      'left': 0, 'top-left': 0, 'top': 0, 'top-right': 0
-    };
-    const dirMap = ['right', 'bottom-right', 'bottom', 'bottom-left', 'left', 'top-left', 'top', 'top-right'];
-
-    // 遍历所有包含该站点的线路
     const connectedLines = lines.filter(l => l.stationIds.includes(station.id));
+    if (connectedLines.length === 0) return 'right';
 
-    if (connectedLines.length === 0) {
-      return 'right';
-    }
-
+    // 收集所有从该站点出发的线路路径段（相对站点坐标）
+    const segments = [];
     for (const line of connectedLines) {
       const idx = line.stationIds.indexOf(station.id);
       const neighborIds = [];
@@ -229,30 +298,46 @@ const Geometry = (() => {
         const neighbor = stationMap[nid];
         if (!neighbor) continue;
 
-        // 生成实际路径，取第一段方向（即线路碰到站点的真实方向）
         const pathPoints = generatePath(station.x, station.y, neighbor.x, neighbor.y);
-        if (pathPoints.length < 2) continue;
-
-        const segDx = pathPoints[1].x - pathPoints[0].x;
-        const segDy = pathPoints[1].y - pathPoints[0].y;
-        if (Math.abs(segDx) < 1 && Math.abs(segDy) < 1) continue;
-
-        // atan2: 0=右, PI/2=下(SVG坐标), PI=左, -PI/2=上
-        const deg = (Math.atan2(segDy, segDx) * 180 / Math.PI + 360) % 360;
-        const sector = Math.round(deg / 45) % 8;
-        dirCount[dirMap[sector]]++;
+        for (let i = 0; i < pathPoints.length - 1; i++) {
+          segments.push({
+            x1: pathPoints[i].x - station.x,
+            y1: pathPoints[i].y - station.y,
+            x2: pathPoints[i + 1].x - station.x,
+            y2: pathPoints[i + 1].y - station.y
+          });
+        }
       }
     }
 
-    // 优先选择基本方向（上下左右），其次对角方向
+    // 估算标签文本宽度（中英文取最大值）
+    const cnWidth = estimateTextWidth(station.name, 13);
+    const enWidth = estimateTextWidth(station.nameEn, 10);
+    const labelWidth = Math.max(cnWidth, enWidth);
+    const hasEn = !!station.nameEn;
+
+    // 8 个候选方向
     const cardinal = ['top', 'bottom', 'left', 'right'];
     const diagonal = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
     const allDirs = [...cardinal, ...diagonal];
 
+    // 统计每个方向的相交次数
+    const dirCount = {};
+    for (const dir of allDirs) {
+      const box = getLabelBox(dir, labelWidth, hasEn);
+      let count = 0;
+      for (const seg of segments) {
+        if (segmentIntersectsBox(seg.x1, seg.y1, seg.x2, seg.y2, box.x1, box.y1, box.x2, box.y2)) {
+          count++;
+        }
+      }
+      dirCount[dir] = count;
+    }
+
+    // 优先基本方向，选相交最少（优先为 0）的方向
     let bestDir = 'right';
     let minCount = Infinity;
 
-    // 第一轮：只看基本方向
     for (const dir of cardinal) {
       if (dirCount[dir] < minCount) {
         minCount = dirCount[dir];
@@ -260,7 +345,7 @@ const Geometry = (() => {
       }
     }
 
-    // 如果基本方向都有线路，再看对角方向
+    // 基本方向都相交时，再考虑对角方向
     if (minCount > 0) {
       for (const dir of allDirs) {
         if (dirCount[dir] < minCount) {
