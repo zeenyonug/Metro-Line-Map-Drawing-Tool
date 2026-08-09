@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metro Line Map Drawing Tool - 地铁线路图绘制工具</title>
+<meta name="description" content="零依赖、零注册，开箱即用的在线地铁线路图绘制工具。Zero dependencies, no registration, start drawing instantly.">
+<link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ===== Reset & Base ===== */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
+html{scroll-behavior:smooth}
+body{font-family:'Inter','Microsoft YaHei',system-ui,sans-serif;background:#050505;color:#e2e8f0;line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+a{text-decoration:none;color:inherit}
+button{border:none;background:none;cursor:pointer;font-family:inherit}
+img,svg{display:block;-webkit-user-drag:none;user-drag:none;pointer-events:none}
+#demoSvg,#demoSvg *{pointer-events:auto}
+input,textarea,select,button{-webkit-user-select:none;user-select:none;-webkit-appearance:none;appearance:none;outline:none}
+::selection{background:transparent;color:inherit}
+::-moz-selection{background:transparent;color:inherit}
+::-webkit-selection{background:transparent;color:inherit}
+
+/* ===== Variables ===== */
+:root{
+  --accent:#f59e0b;--accent-hover:#d97706;--accent-glow:rgba(245,158,11,.15);
+  --bg:#050505;--bg-card:#0a0a0a;--bg-card-hover:#111;
+  --border:#1a1a1a;--border-hover:#2a2a2a;
+  --text:#e2e8f0;--text-secondary:#94a3b8;--text-muted:#64748b;
+  --radius:12px;--radius-lg:16px;
+}
+
+/* ===== Nav ===== */
+.nav{position:fixed;top:0;left:0;right:0;height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(20px,4vw,48px);background:rgba(5,5,5,.7);backdrop-filter:blur(20px) saturate(1.2);border-bottom:1px solid var(--border);z-index:100;transition:transform .3s;white-space:nowrap}
+.nav-brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;letter-spacing:.3px;color:var(--text);white-space:nowrap;flex-shrink:0}
+.nav-brand svg{width:22px;height:22px;color:var(--accent);flex-shrink:0}
+.nav-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.lang-toggle{display:flex;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px;flex-shrink:0}
+.lang-btn{padding:5px 12px;font-size:12px;font-weight:500;color:var(--text-muted);border-radius:6px;transition:all .2s;white-space:nowrap}
+.lang-btn.active{background:var(--accent);color:#000;font-weight:600}
+.lang-btn:hover:not(.active){color:var(--text)}
+.nav-cta{padding:7px 18px;background:var(--accent);color:#000;border-radius:8px;font-size:13px;font-weight:600;transition:all .2s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0}
+.nav-cta:hover{background:var(--accent-hover);box-shadow:0 0 0 3px var(--accent-glow)}
+.nav-cta svg{width:14px;height:14px}
+
+/* ===== Hero ===== */
+.hero{position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:80px 24px 60px;overflow:hidden}
+.hero-canvas{position:absolute;inset:0;z-index:0}
+.hero-gradient{position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 45%,rgba(245,158,11,.06),transparent 70%);z-index:1}
+.hero-content{position:relative;z-index:2;text-align:center;max-width:720px}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 16px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:20px;font-size:12px;font-weight:500;color:var(--accent);margin-bottom:28px;letter-spacing:.3px;white-space:nowrap}
+.hero-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+.hero h1{font-size:clamp(40px,7vw,72px);font-weight:800;letter-spacing:-.03em;line-height:1.1;margin-bottom:20px;background:linear-gradient(180deg,#fff 40%,rgba(255,255,255,.6));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero h1 .accent{background:linear-gradient(135deg,var(--accent),#fbbf24);-webkit-background-clip:text;background-clip:text}
+.hero p{font-size:clamp(15px,2vw,18px);color:var(--text-secondary);max-width:520px;margin:0 auto 36px;line-height:1.7}
+.hero-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn-hero{padding:13px 28px;border-radius:10px;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:8px;transition:all .25s;white-space:nowrap}
+.btn-hero svg{width:16px;height:16px}
+.btn-hero-primary{background:var(--accent);color:#000}
+.btn-hero-primary:hover{background:var(--accent-hover);box-shadow:0 0 0 4px var(--accent-glow);transform:translateY(-2px)}
+.btn-hero-ghost{border:1px solid var(--border);color:var(--text-secondary)}
+.btn-hero-ghost:hover{border-color:var(--border-hover);color:var(--text);background:rgba(255,255,255,.03)}
+.scroll-hint{position:absolute;bottom:28px;left:50%;transform:translateX(-50%);z-index:2;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text-muted);font-size:11px;letter-spacing:1px;animation:bounce 2.5s ease-in-out infinite}
+@keyframes bounce{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(6px)}}
+
+/* ===== Sections ===== */
+.section{padding:120px clamp(20px,4vw,48px);max-width:1100px;margin:0 auto}
+.section-label{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--accent);letter-spacing:.5px;text-transform:uppercase;margin-bottom:16px;white-space:nowrap}
+.section-label svg{width:16px;height:16px}
+.section-title{font-size:clamp(28px,4vw,42px);font-weight:700;letter-spacing:-.02em;line-height:1.2;margin-bottom:16px}
+.section-desc{font-size:16px;color:var(--text-secondary);max-width:560px;line-height:1.7}
+
+/* ===== Features Grid ===== */
+.features{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:56px}
+.feature-card{position:relative;padding:32px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);transition:all .35s;overflow:hidden}
+.feature-card::before{content:'';position:absolute;inset:-1px;border-radius:inherit;background:linear-gradient(135deg,rgba(245,158,11,.15),transparent 50%);opacity:0;transition:opacity .35s;z-index:0;pointer-events:none}
+.feature-card:hover{border-color:var(--border-hover);transform:translateY(-4px);background:var(--bg-card-hover)}
+.feature-card:hover::before{opacity:1}
+.feature-card>*{position:relative;z-index:1}
+.feature-icon{width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:rgba(245,158,11,.08);border-radius:10px;color:var(--accent);margin-bottom:18px}
+.feature-icon svg{width:20px;height:20px}
+.feature-card h3{font-size:16px;font-weight:600;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.feature-card p{font-size:13px;color:var(--text-secondary);line-height:1.65}
+.feature-preview{margin-top:20px;height:48px;display:flex;align-items:center;gap:12px;opacity:.5;transition:opacity .35s}
+.feature-card:hover .feature-preview{opacity:1}
+.preview-line{height:3px;border-radius:2px;background:var(--accent)}
+.preview-dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--accent);flex-shrink:0}
+
+/* ===== Demo Section ===== */
+.demo-section{padding:80px clamp(20px,4vw,48px) 120px;max-width:1100px;margin:0 auto}
+.demo-container{position:relative;margin-top:48px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5)}
+.demo-toolbar{height:40px;background:#0d0d0d;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:6px}
+.demo-tool{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:5px;color:var(--text-muted);transition:all .2s}
+.demo-tool.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.demo-tool svg{width:13px;height:13px}
+.demo-divider{width:1px;height:16px;background:var(--border);margin:0 4px}
+.demo-canvas-wrap{position:relative;height:420px;overflow:hidden;background:#0a0a0a}
+.demo-canvas-wrap svg{width:100%;height:100%}
+.demo-tooltip{position:absolute;padding:6px 12px;background:rgba(0,0,0,.85);border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text);pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap;z-index:10}
+.demo-cta{text-align:center;padding:24px;border-top:1px solid var(--border)}
+.demo-cta a{color:var(--accent);font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .2s;white-space:nowrap}
+.demo-cta a:hover{gap:10px}
+.demo-cta a svg{width:14px;height:14px}
+
+/* ===== CTA Section ===== */
+.cta-section{text-align:center;padding:100px 24px 120px;position:relative}
+.cta-section::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:60%;height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent)}
+.cta-section h2{font-size:clamp(28px,4vw,40px);font-weight:700;letter-spacing:-.02em;margin-bottom:12px}
+.cta-section p{color:var(--text-secondary);font-size:16px;margin-bottom:36px;max-width:480px;margin-left:auto;margin-right:auto}
+.cta-buttons{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+
+/* ===== Footer ===== */
+.footer{padding:40px clamp(20px,4vw,48px);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px}
+.footer-left{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-muted)}
+.footer-left svg{width:18px;height:18px;color:var(--accent)}
+.footer-links{display:flex;gap:20px}
+.footer-links a{font-size:13px;color:var(--text-muted);display:flex;align-items:center;gap:5px;transition:color .2s;white-space:nowrap}
+.footer-links a:hover{color:var(--accent)}
+.footer-links svg{width:15px;height:15px}
+
+/* ===== Disable all selection & context menu ===== */
+body{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important}
+
+/* ===== Scroll Reveal ===== */
+.reveal{opacity:0;transform:translateY(30px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+
+/* ===== Responsive ===== */
+@media(max-width:768px){
+  .features{grid-template-columns:1fr}
+  .demo-canvas-wrap{height:300px}
+  .hero-actions{flex-direction:column;align-items:center}
+  .nav-cta span{display:none}
+  .nav-cta{padding:7px 12px}
+  .footer{flex-direction:column;text-align:center}
+  .section-title{white-space:normal}
+}
+@media(max-width:480px){
+  .section{padding:80px 16px}
+  .feature-card{padding:24px}
+}
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="nav">
+  <a href="#" class="nav-brand">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>
+    <span data-i18n="brand">Metro Map Tool</span>
+  </a>
+  <div class="nav-right">
+    <div class="lang-toggle">
+      <button class="lang-btn active" data-lang="zh">中</button>
+      <button class="lang-btn" data-lang="en">EN</button>
+    </div>
+    <a href="https://zeenyonug.github.io/Metro-Line-Map-Drawing-Tool/" target="_blank" class="nav-cta">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      <span data-i18n="navCta">立即体验</span>
+    </a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <canvas class="hero-canvas" id="heroCanvas"></canvas>
+  <div class="hero-gradient"></div>
+  <div class="hero-content">
+    <div class="hero-badge"><span class="dot"></span><span data-i18n="badge">开源免费 · 零注册</span></div>
+    <h1 data-i18n-html="heroTitle">绘制你的<br><span class="accent">地铁世界</span></h1>
+    <p data-i18n="heroDesc">零依赖、零注册，开箱即用的在线地铁线路图绘制工具。支持四种线型、中英双语图例、多分辨率导出。</p>
+    <div class="hero-actions">
+      <a href="https://zeenyonug.github.io/Metro-Line-Map-Drawing-Tool/" target="_blank" class="btn-hero btn-hero-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span data-i18n="heroCta">开始创作</span>
+      </a>
+      <a href="https://github.com/zeenyonug/Metro-Line-Map-Drawing-Tool" target="_blank" class="btn-hero btn-hero-ghost">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+  <div class="scroll-hint">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="6 9 12 15 18 9"/></svg>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section">
+  <div class="reveal">
+    <div class="section-label">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      <span data-i18n="featLabel">核心功能</span>
+    </div>
+    <h2 class="section-title" data-i18n="featTitle">为地铁制图而生</h2>
+    <p class="section-desc" data-i18n="featDesc">从站点放置到线路绘制，从换乘识别到多格式导出——每个细节都为地铁制图场景精心打磨。</p>
+  </div>
+  <div class="features reveal">
+    <div class="feature-card">
+      <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></div>
+      <h3 data-i18n="f1t">三大编辑工具</h3>
+      <p data-i18n="f1d">选择、站点、线路三大工具覆盖全部操作。点击放置站点，拖拽串联线路，拖回起点自动成环—— intuitive 到不需要教程。</p>
+      <div class="feature-preview">
+        <div class="preview-dot"></div><div class="preview-line" style="width:40px"></div>
+        <div class="preview-dot"></div><div class="preview-line" style="width:60px"></div>
+        <div class="preview-dot"></div>
+      </div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16" stroke-dasharray="4 3"/></svg></div>
+      <h3 data-i18n="f2t">四种线路类型</h3>
+      <p data-i18n="f2d">普通实线、高速铁路、空心线、虚线——仅使用 0°/45°/90° 角的「先斜后直」风格，还原真实地铁线路的规范与美感。</p>
+      <div class="feature-preview">
+        <div class="preview-line" style="width:30px;height:3px"></div>
+        <div class="preview-line" style="width:30px;height:5px;background:linear-gradient(var(--accent),var(--accent)) border-box;border:1px solid var(--accent);background-clip:padding-box"></div>
+        <div class="preview-line" style="width:30px;height:3px;background:repeating-linear-gradient(90deg,var(--accent) 0 6px,transparent 6px 10px)"></div>
+      </div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+      <h3 data-i18n="f3t">多格式专业导出</h3>
+      <p data-i18n="f3d">SVG / PNG（1x~4x 分辨率）一键导出，图例位置四角可选，中英双语图例自由组合。满足屏幕展示到印刷出版的全部需求。</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+      <h3 data-i18n="f4t">双语 · 三主题 · 纯本地</h3>
+      <p data-i18n="f4d">中/英文界面实时切换，白/深蓝/黑三种主题。所有数据存储在浏览器本地，无需登录，不收集任何信息。</p>
+    </div>
+  </div>
+</section>
+
+<!-- Interactive Demo -->
+<section class="demo-section">
+  <div class="reveal">
+    <div class="section-label">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <span data-i18n="demoLabel">交互预览</span>
+    </div>
+    <h2 class="section-title" data-i18n="demoTitle">亲手试试</h2>
+    <p class="section-desc" data-i18n="demoDesc">下方展示了一张由本工具绘制的示例线路图——真实导出效果，所见即所得。</p>
+  </div>
+  <div class="demo-container reveal">
+    <div class="demo-toolbar">
+      <div class="demo-tool active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></div>
+      <div class="demo-tool"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="20" x2="20" y2="4"/><circle cx="4" cy="20" r="2" fill="currentColor"/><circle cx="20" cy="4" r="2" fill="currentColor"/></svg></div>
+      <div class="demo-divider"></div>
+      <div class="demo-tool"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+    </div>
+    <div class="demo-canvas-wrap" id="demoWrap">
+      <svg id="demoSvg" viewBox="0 0 900 420"></svg>
+    </div>
+    <div class="demo-cta">
+      <a href="https://zeenyonug.github.io/Metro-Line-Map-Drawing-Tool/" target="_blank">
+        <span data-i18n="demoCta">打开完整编辑器</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section reveal">
+  <h2 data-i18n="ctaTitle">准备好开始了吗？</h2>
+  <p data-i18n="ctaDesc">无需注册，无需下载。打开浏览器，即刻开始创作。</p>
+  <div class="cta-buttons">
+    <a href="https://zeenyonug.github.io/Metro-Line-Map-Drawing-Tool/" target="_blank" class="btn-hero btn-hero-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <span data-i18n="ctaOnline">在线使用</span>
+    </a>
+    <a href="https://github.com/zeenyonug/Metro-Line-Map-Drawing-Tool/releases" target="_blank" class="btn-hero btn-hero-ghost">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span data-i18n="ctaDownload">下载桌面版</span>
+    </a>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="footer-left">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>
+    <span>© 2026 zeenyoung</span>
+  </div>
+  <div class="footer-links">
+    <a href="https://github.com/zeenyonug/Metro-Line-Map-Drawing-Tool" target="_blank">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      GitHub
+    </a>
+    <a href="https://zeenyonug.github.io/Metro-Line-Map-Drawing-Tool/" target="_blank">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <span data-i18n="footerApp">在线应用</span>
+    </a>
+  </div>
+</footer>
+
+<script>
+/* ===== i18n ===== */
+const i18n={zh:{brand:'Metro Map Tool',navCta:'立即体验',badge:'开源免费 · 零注册',heroTitle:'绘制你的<br><span class="accent">地铁世界</span>',heroDesc:'零依赖、零注册，开箱即用的在线地铁线路图绘制工具。支持四种线型、中英双语图例、多分辨率导出。',heroCta:'开始创作',featLabel:'核心功能',featTitle:'为地铁制图而生',featDesc:'从站点放置到线路绘制，从换乘识别到多格式导出——每个细节都为地铁制图场景精心打磨。',f1t:'三大编辑工具',f1d:'选择、站点、线路三大工具覆盖全部操作。点击放置站点，拖拽串联线路，拖回起点自动成环——intuitive 到不需要教程。',f2t:'四种线路类型',f2d:'普通实线、高速铁路、空心线、虚线——仅使用 0°/45°/90° 角的「先斜后直」风格，还原真实地铁线路的规范与美感。',f3t:'多格式专业导出',f3d:'SVG / PNG（1x~4x 分辨率）一键导出，图例位置四角可选，中英双语图例自由组合。满足屏幕展示到印刷出版的全部需求。',f4t:'双语 · 三主题 · 纯本地',f4d:'中/英文界面实时切换，白/深蓝/黑三种主题。所有数据存储在浏览器本地，无需登录，不收集任何信息。',demoLabel:'效果预览',demoTitle:'真实导出效果',demoDesc:'下方展示了一张由本工具绘制的示例线路图——真实导出效果，所见即所得。',demoCta:'打开完整编辑器',ctaTitle:'准备好开始了吗？',ctaDesc:'无需注册，无需下载。打开浏览器，即刻开始创作。',ctaOnline:'在线使用',ctaDownload:'下载桌面版',footerApp:'在线应用'},en:{brand:'Metro Map Tool',navCta:'Try Now',badge:'Open Source · No Registration',heroTitle:'Draw Your<br><span class="accent">Metro World</span>',heroDesc:'Zero dependencies, no registration. An online metro line map drawing tool with 4 line types, bilingual legends, and multi-resolution export.',heroCta:'Start Creating',featLabel:'Core Features',featTitle:'Built for Metro Mapping',featDesc:'From station placement to line drawing, transfer detection to multi-format export — every detail is crafted for metro cartography.',f1t:'Three Editing Tools',f1d:'Select, Station, and Line tools cover every operation. Click to place stations, drag to connect lines, drag back to form loops — so intuitive, no tutorial needed.',f2t:'Four Line Types',f2d:'Solid, high-speed rail, hollow, and dashed — using only 0°/45°/90° angles in a "diagonal first, then straight" style that mirrors real metro design standards.',f3t:'Professional Multi-Format Export',f3d:'Export as SVG or PNG (1x–4x resolution). Customizable legend position and bilingual options. From screen display to print publishing.',f4t:'Bilingual · 3 Themes · Local-First',f4d:'Switch between Chinese and English instantly. Three themes: white, dark blue, black. All data stored locally — no login, no tracking.',demoLabel:'Preview',demoTitle:'Real Export Result',demoDesc:'Below is a sample metro map drawn with this tool — real export output, what you see is what you get.',demoCta:'Open Full Editor',ctaTitle:'Ready to Start?',ctaDesc:'No registration, no download. Open your browser and start creating.',ctaOnline:'Use Online',ctaDownload:'Download Desktop',footerApp:'Web App'}};
+let lang='zh';
+function applyLang(l){lang=l;const d=i18n[l];document.documentElement.lang=l==='zh'?'zh-CN':'en';document.querySelectorAll('[data-i18n]').forEach(e=>{const k=e.dataset.i18n;if(d[k]!==undefined)e.textContent=d[k]});document.querySelectorAll('[data-i18n-html]').forEach(e=>{const k=e.dataset.i18nHtml;if(d[k]!==undefined)e.innerHTML=d[k]});document.querySelectorAll('.lang-btn').forEach(b=>b.classList.toggle('active',b.dataset.lang===l))}
+document.querySelectorAll('.lang-btn').forEach(b=>b.addEventListener('click',()=>applyLang(b.dataset.lang)));
+
+/* ===== Hero Canvas Animation ===== */
+(function(){
+const c=document.getElementById('heroCanvas'),ctx=c.getContext('2d');
+let w,h,dpr;
+function resize(){dpr=window.devicePixelRatio||1;w=c.clientWidth;h=c.clientHeight;c.width=w*dpr;c.height=h*dpr;ctx.scale(dpr,dpr)}
+resize();window.addEventListener('resize',resize);
+
+// Metro line definitions
+const lines=[
+  {color:'#f59e0b',pts:[[.08,.35],[.22,.35],[.32,.22],[.52,.22],[.62,.35],[.78,.35],[.88,.22]]},
+  {color:'#3b82f6',pts:[[.12,.65],[.28,.65],[.38,.52],[.58,.52],[.68,.65],[.82,.65],[.92,.52]]},
+  {color:'#22c55e',pts:[[.35,.12],[.35,.35],[.35,.52],[.35,.72],[.5,.82]]},
+  {color:'#a855f7',pts:[[.65,.15],[.65,.35],[.65,.52],[.65,.72],[.5,.82]]}
+];
+let progress=0;const speed=0.003;
+
+function draw(){
+  ctx.clearRect(0,0,w,h);
+  // Draw grid dots
+  ctx.fillStyle='rgba(255,255,255,0.03)';
+  const gs=40;
+  for(let x=gs;x<w;x+=gs)for(let y=gs;y<h;y+=gs){ctx.beginPath();ctx.arc(x,y,1,0,Math.PI*2);ctx.fill()}
+
+  progress=Math.min(progress+speed,1);
+  const totalPts=lines.reduce((a,l)=>a+l.pts.length,0);
+  let drawn=0;
+
+  lines.forEach(line=>{
+    const pts=line.pts.map(p=>[p[0]*w,p[1]*h]);
+    const lineProgress=Math.min(Math.max((progress*totalPts-drawn)/pts.length,0),1);
+    drawn+=pts.length;
+    if(lineProgress<=0)return;
+
+    // Draw line
+    ctx.strokeStyle=line.color;ctx.lineWidth=2.5;ctx.globalAlpha=0.25*lineProgress;
+    ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);
+    const drawCount=Math.floor(lineProgress*(pts.length-1))+1;
+    for(let i=1;i<drawCount&&i<pts.length;i++){ctx.lineTo(pts[i][0],pts[i][1])}
+    if(lineProgress>=1){ctx.closePath()}
+    ctx.stroke();
+
+    // Draw glow
+    ctx.lineWidth=8;ctx.globalAlpha=0.04*lineProgress;
+    ctx.stroke();
+
+    // Draw stations
+    ctx.globalAlpha=0.4*lineProgress;
+    for(let i=0;i<Math.min(drawCount+1,pts.length);i++){
+      const segP=(i)/(pts.length-1);
+      if(segP>lineProgress)break;
+      ctx.fillStyle=line.color;ctx.beginPath();ctx.arc(pts[i][0],pts[i][1],4,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#050505';ctx.beginPath();ctx.arc(pts[i][0],pts[i][1],2,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  });
+
+  if(progress<1)requestAnimationFrame(draw);
+  else{
+    // Gentle pulse loop
+    let t=0;
+    function pulse(){
+      t+=0.01;ctx.clearRect(0,0,w,h);
+      ctx.fillStyle='rgba(255,255,255,0.03)';
+      for(let x=gs;x<w;x+=gs)for(let y=gs;y<h;y+=gs){ctx.beginPath();ctx.arc(x,y,1,0,Math.PI*2);ctx.fill()}
+      lines.forEach(line=>{
+        const pts=line.pts.map(p=>[p[0]*w,p[1]*h]);
+        const a=0.2+0.08*Math.sin(t+line.pts[0][0]*5);
+        ctx.strokeStyle=line.color;ctx.lineWidth=2.5;ctx.globalAlpha=a;
+        ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);
+        for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);
+        ctx.closePath();ctx.stroke();
+        ctx.lineWidth=8;ctx.globalAlpha=a*0.2;ctx.stroke();
+        ctx.globalAlpha=a+0.15;
+        pts.forEach(p=>{ctx.fillStyle=line.color;ctx.beginPath();ctx.arc(p[0],p[1],4,0,Math.PI*2);ctx.fill();ctx.fillStyle='#050505';ctx.beginPath();ctx.arc(p[0],p[1],2,0,Math.PI*2);ctx.fill()});
+        ctx.globalAlpha=1;
+      });
+      requestAnimationFrame(pulse);
+    }
+    pulse();
+  }
+}
+requestAnimationFrame(draw);
+})();
+
+/* ===== Demo Preview Map ===== */
+(function(){
+const svg=document.getElementById('demoSvg');
+
+// Sample metro data
+const stations=[
+  {id:0,x:80,y:200,name:'西站',nameEn:'West Station',lines:[0]},
+  {id:1,x:180,y:200,name:'市政府',nameEn:'City Hall',lines:[0,2]},
+  {id:2,x:300,y:200,name:'中心广场',nameEn:'Central Plaza',lines:[0,1]},
+  {id:3,x:420,y:200,name:'科技园',nameEn:'Tech Park',lines:[0]},
+  {id:4,x:540,y:200,name:'大学城',nameEn:'University City',lines:[0,2]},
+  {id:5,x:660,y:200,name:'体育中心',nameEn:'Sports Center',lines:[0]},
+  {id:6,x:780,y:200,name:'东站',nameEn:'East Station',lines:[0]},
+  {id:7,x:300,y:100,name:'北站',nameEn:'North Station',lines:[1]},
+  {id:8,x:420,y:100,name:'会展中心',nameEn:'Convention Center',lines:[1]},
+  {id:9,x:540,y:100,name:'商务区',nameEn:'Business District',lines:[1,2]},
+  {id:10,x:660,y:100,name:'机场',nameEn:'Airport',lines:[1]},
+  {id:11,x:180,y:320,name:'公园',nameEn:'Park',lines:[2]},
+  {id:12,x:300,y:320,name:'医院',nameEn:'Hospital',lines:[2]},
+  {id:13,x:420,y:320,name:'博物馆',nameEn:'Museum',lines:[2]},
+  {id:14,x:540,y:320,name:'图书馆',nameEn:'Library',lines:[2]}
+];
+
+const metroLines=[
+  {color:'#f59e0b',stationIds:[0,1,2,3,4,5,6]},
+  {color:'#3b82f6',stationIds:[7,2,8,9,10]},
+  {color:'#22c55e',stationIds:[11,1,12,13,14,9,4]}
+];
+
+// Build SVG
+let html='<g id="demoGrid">';
+for(let x=20;x<900;x+=30)for(let y=20;y<420;y+=30)html+=`<circle cx="${x}" cy="${y}" r="0.8" fill="rgba(148,163,184,0.1)"/>`;
+html+='</g>';
+
+// Lines
+metroLines.forEach(line=>{
+  const pts=line.stationIds.map(id=>stations[id]);
+  let d=`M${pts[0].x} ${pts[0].y}`;
+  for(let i=1;i<pts.length;i++){
+    const prev=pts[i-1],cur=pts[i];
+    const dx=cur.x-prev.x,dy=cur.y-prev.y;
+    if(Math.abs(dx)>5&&Math.abs(dy)>5){
+      const mx=prev.x+dx*0.5;
+      d+=` L${mx} ${prev.y} L${cur.x} ${cur.y}`;
+    }else{d+=` L${cur.x} ${cur.y}`}
+  }
+  html+=`<path d="${d}" fill="none" stroke="${line.color}" stroke-width="4" stroke-linecap="butt" stroke-linejoin="round" opacity="0.7"/>`;
+  html+=`<path d="${d}" fill="none" stroke="${line.color}" stroke-width="10" stroke-linecap="butt" opacity="0.05"/>`;
+});
+
+// Stations (always visible, just like the real tool)
+stations.forEach(s=>{
+  const isTransfer=s.lines.length>1;
+  const r=isTransfer?9:6;
+  const fill=isTransfer?'#e2e8f0':'#f59e0b';
+  const stroke=isTransfer?'#f59e0b':'#050505';
+  const sw=isTransfer?3:2;
+  html+=`<circle cx="${s.x}" cy="${s.y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+});
+
+// Legend
+html+=`<g transform="translate(720,30)">`;
+html+=`<rect x="0" y="0" width="150" height="80" rx="6" fill="rgba(10,10,10,0.85)" stroke="#1a1a1a" stroke-width="1"/>`;
+const legendItems=[{color:'#f59e0b',name:'1号线',nameEn:'Line 1'},{color:'#3b82f6',name:'2号线',nameEn:'Line 2'},{color:'#22c55e',name:'3号线',nameEn:'Line 3'}];
+legendItems.forEach((item,i)=>{
+  const y=16+i*24;
+  html+=`<rect x="14" y="${y-6}" width="12" height="12" rx="2" fill="${item.color}"/>`;
+  html+=`<text x="34" y="${y+4}" fill="#e2e8f0" font-size="12" font-weight="600">${item.name}</text>`;
+  html+=`<text x="34" y="${y+15}" fill="#64748b" font-size="9">${item.nameEn}</text>`;
+});
+html+=`</g>`;
+
+svg.innerHTML=html;
+})();
+
+/* ===== Scroll Reveal ===== */
+const observer=new IntersectionObserver((entries)=>{entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');observer.unobserve(e.target)}})},{threshold:0.15});
+document.querySelectorAll('.reveal').forEach(el=>observer.observe(el));
+
+/* ===== Disable context menu & selection events ===== */
+document.addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('copy',e=>e.preventDefault());
+document.addEventListener('cut',e=>e.preventDefault());
+document.addEventListener('paste',e=>e.preventDefault());
+document.addEventListener('dragstart',e=>e.preventDefault());
+document.addEventListener('selectstart',e=>e.preventDefault());
+document.addEventListener('gesturestart',e=>e.preventDefault());
+document.addEventListener('gesturechange',e=>e.preventDefault());
+document.addEventListener('gestureend',e=>e.preventDefault());
+let lastTouchEnd=0;
+document.addEventListener('touchend',e=>{const now=Date.now();if(now-lastTouchEnd<=300)e.preventDefault();lastTouchEnd=now},{passive:false});
+
+/* ===== Nav hide on scroll ===== */
+let lastScroll=0;
+window.addEventListener('scroll',()=>{const cur=window.scrollY;if(cur>80&&cur>lastScroll)document.querySelector('.nav').style.transform='translateY(-100%)';else document.querySelector('.nav').style.transform='translateY(0)';lastScroll=cur},{passive:true});
+</script>
+</body>
+</html>
