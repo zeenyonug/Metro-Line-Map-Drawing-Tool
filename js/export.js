@@ -278,31 +278,53 @@ const Export = (() => {
     const showEn = langs.en;
     const isSingleLang = (showCn !== showEn);
 
-    // 缩小至原始尺寸的30%
-    const pad = isSingleLang ? 4 : 4;
-    const barWidth = isSingleLang ? 2 : 2;
-    const barHeight = isSingleLang ? 9 : 12;
-    const entryGap = 3;
-    const textGap = 3;
-    const colGap = 3; // 列间距
-    const maxRows = 8; // 每竖列最多8条
+    // 布局参数
+    const pad = 8;
+    const barWidth = 8;
+    const barHeight = isSingleLang ? 14 : 10;
+    const cnFontSize = isSingleLang ? 15 : 11;
+    const enFontSize = isSingleLang ? 12 : 9;
+    const cnLineHeight = cnFontSize * 1.2;
+    const enLineHeight = enFontSize * 1.2;
+    const cnEnGap = 1;
+    const textGap = 5;
+    const entryGap = 6;
+    const colGap = 10;
+    const maxRows = 8;
 
+    // 单条图例项总高度
+    const textBlockHeight = showCn ? cnLineHeight : 0;
+    const textBlockTotalHeight = textBlockHeight +
+      (showCn && showEn ? (cnEnGap + enLineHeight) : 0) +
+      (!showCn && showEn ? enLineHeight : 0);
+    const entryHeight = Math.max(barHeight, textBlockTotalHeight) + 2;
+
+    // 文字宽度估算：CJK ≈ 字号，其他 ≈ 字号 * 0.6
     function estimateTextWidth(line) {
-      let w = 0;
-      if (showCn) w = Math.max(w, (line.name || '').length * (isSingleLang ? 5 : 4));
-      if (showEn) w = Math.max(w, (line.nameEn || '').length * (isSingleLang ? 3 : 2));
-      return Math.max(isSingleLang ? 24 : 18, w);
+      let cnW = 0, enW = 0;
+      if (showCn) {
+        for (const ch of (line.name || '')) {
+          const isCJK = /[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef]/.test(ch);
+          cnW += isCJK ? cnFontSize : cnFontSize * 0.6;
+        }
+      }
+      if (showEn) {
+        for (const ch of (line.nameEn || '')) {
+          const isCJK = /[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef]/.test(ch);
+          enW += isCJK ? enFontSize : enFontSize * 0.6;
+        }
+      }
+      return Math.max(cnW, enW, 20);
     }
 
     const maxTextWidth = Math.max(...lines.map(estimateTextWidth));
-    const entryWidth = barWidth + textGap + maxTextWidth;
+    const entryWidth = barWidth + textGap + maxTextWidth + 4;
     const totalLines = lines.length;
     const colCount = Math.ceil(totalLines / maxRows);
-    const rowsInLastCol = ((totalLines - 1) % maxRows) + 1;
     const rowCount = Math.min(totalLines, maxRows);
 
     const legendWidth = colCount * entryWidth + (colCount - 1) * colGap + pad * 2;
-    const legendHeight = rowCount * barHeight + (rowCount - 1) * entryGap + pad * 2;
+    const legendHeight = rowCount * entryHeight + (rowCount - 1) * entryGap + pad * 2;
 
     const corner = getLegendCorner();
     const margin = 20;
@@ -340,7 +362,7 @@ const Export = (() => {
       const col = Math.floor(i / maxRows); // 第几列
       const row = i % maxRows; // 第几行
       const entryX = legendX + pad + col * (entryWidth + colGap);
-      const entryY = legendY + pad + row * (barHeight + entryGap);
+      const entryY = legendY + pad + row * (entryHeight + entryGap);
       const lineType = line.type || 'normal';
 
       if (lineType === 'highspeed') {
@@ -419,13 +441,18 @@ const Export = (() => {
       }
 
       const textX = entryX + barWidth + textGap;
-      let nameY = entryY + (isSingleLang ? 20 : 16);
+      // 文字块顶部垂直居中于条目高度内
+      const textBlockTop = entryY + (entryHeight - textBlockTotalHeight) / 2;
+      const cnBaselineY = textBlockTop + cnFontSize * 0.85;
+      const enBaselineY = showCn
+        ? cnBaselineY + cnEnGap + enFontSize * 0.9
+        : textBlockTop + enFontSize * 0.85;
 
       if (showCn) {
         const nameCn = document.createElementNS(SVG_NS, 'text');
         nameCn.setAttribute('x', textX);
-        nameCn.setAttribute('y', nameY);
-        nameCn.setAttribute('font-size', isSingleLang ? '18' : '13');
+        nameCn.setAttribute('y', cnBaselineY);
+        nameCn.setAttribute('font-size', String(cnFontSize));
         nameCn.setAttribute('font-weight', 'bold');
         nameCn.setAttribute('font-family', 'Microsoft YaHei, sans-serif');
         nameCn.setAttribute('fill', '#0f172a');
@@ -436,8 +463,8 @@ const Export = (() => {
       if (showEn) {
         const nameEn = document.createElementNS(SVG_NS, 'text');
         nameEn.setAttribute('x', textX);
-        nameEn.setAttribute('y', nameY + (showCn ? (isSingleLang ? 0 : 16) : 0));
-        nameEn.setAttribute('font-size', isSingleLang ? '14' : '10');
+        nameEn.setAttribute('y', enBaselineY);
+        nameEn.setAttribute('font-size', String(enFontSize));
         nameEn.setAttribute('font-family', 'Microsoft YaHei, sans-serif');
         nameEn.setAttribute('fill', '#64748b');
         nameEn.textContent = line.nameEn || '';
