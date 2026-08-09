@@ -193,7 +193,9 @@ const Geometry = (() => {
 
   /**
    * 自动计算站点标签的最佳位置
-   * 分析站点连接的所有线路方向，选择线路最少的方向放置标签
+   * 分析站点连接的所有线路实际碰到站点的方向，选择线路未占用的方向放置标签
+   * 注意：线路路径采用"先45°斜线再直线"算法，故以实际路径第一段方向为准，
+   * 而非站点到邻居的直线方向。
    * @param {Object} station - 站点对象
    * @param {Array} lines - 所有线路
    * @param {Array} stations - 所有站点
@@ -203,7 +205,7 @@ const Geometry = (() => {
     const stationMap = {};
     stations.forEach(s => { stationMap[s.id] = s; });
 
-    // 8 个方向，统计每个方向的线路数
+    // 8 个方向，统计每个方向被线路碰到的次数
     const dirCount = {
       'right': 0, 'bottom-right': 0, 'bottom': 0, 'bottom-left': 0,
       'left': 0, 'top-left': 0, 'top': 0, 'top-right': 0
@@ -227,12 +229,16 @@ const Geometry = (() => {
         const neighbor = stationMap[nid];
         if (!neighbor) continue;
 
-        const dx = neighbor.x - station.x;
-        const dy = neighbor.y - station.y;
-        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+        // 生成实际路径，取第一段方向（即线路碰到站点的真实方向）
+        const pathPoints = generatePath(station.x, station.y, neighbor.x, neighbor.y);
+        if (pathPoints.length < 2) continue;
+
+        const segDx = pathPoints[1].x - pathPoints[0].x;
+        const segDy = pathPoints[1].y - pathPoints[0].y;
+        if (Math.abs(segDx) < 1 && Math.abs(segDy) < 1) continue;
 
         // atan2: 0=右, PI/2=下(SVG坐标), PI=左, -PI/2=上
-        const deg = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+        const deg = (Math.atan2(segDy, segDx) * 180 / Math.PI + 360) % 360;
         const sector = Math.round(deg / 45) % 8;
         dirCount[dirMap[sector]]++;
       }
