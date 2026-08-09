@@ -268,7 +268,7 @@ const Export = (() => {
     return svg;
   }
 
-  // 在指定角落添加图例（每条线路一条垂直色条 + 中英文名，每竖列最多8条，超出换下一列）
+  // 在指定角落添加图例（每条线路一条色条 + 中英文名，每竖列最多8条，超出换下一列）
   function appendCornerLegend(svg, state, width, height) {
     if (!state.lines || state.lines.length === 0) return;
 
@@ -278,54 +278,72 @@ const Export = (() => {
     const showEn = langs.en;
     const isSingleLang = (showCn !== showEn);
 
-    // 布局参数
-    const pad = 8;
-    const barWidth = 8;
-    const barHeight = isSingleLang ? 14 : 10;
-    const cnFontSize = isSingleLang ? 15 : 11;
-    const enFontSize = isSingleLang ? 12 : 9;
-    const cnLineHeight = cnFontSize * 1.2;
-    const enLineHeight = enFontSize * 1.2;
-    const cnEnGap = 1;
-    const textGap = 5;
-    const entryGap = 6;
-    const colGap = 10;
+    // ===== 布局参数 =====
+    const cnFontSize = isSingleLang ? 14 : 10;
+    const enFontSize = isSingleLang ? 11 : 8;
+    const cnAscent = cnFontSize * 0.86;   // 中文字形上升（baseline到顶）
+    const cnDescent = cnFontSize * 0.2;   // 中文字形下降（baseline到底）
+    const enAscent = enFontSize * 0.8;
+    const enDescent = enFontSize * 0.22;
+    const cnEnGap = 2;                    // 中文底线到英文顶线间距
+    const barWidth = 9;
+    const barHeight = cnFontSize * 0.75;  // 色条高度 ≈ 中文 3/4
+    const textGap = 6;                    // 色条右沿到文字左沿
+    const padH = 10;                      // 外框水平内边距
+    const padV = 10;                      // 外框垂直内边距
+    const entryGap = 8;                   // 条目之间行间距
+    const colGap = 12;
     const maxRows = 8;
 
-    // 单条图例项总高度
-    const textBlockHeight = showCn ? cnLineHeight : 0;
-    const textBlockTotalHeight = textBlockHeight +
-      (showCn && showEn ? (cnEnGap + enLineHeight) : 0) +
-      (!showCn && showEn ? enLineHeight : 0);
-    const entryHeight = Math.max(barHeight, textBlockTotalHeight) + 2;
+    // ===== 先算出单条条目内，各元素相对"条目原点 (0,0)"的坐标 =====
+    //  中文 baseline 放在 cnAscent（这样中文顶部刚好在 y≈0）
+    const cnBaseline = cnAscent;
+    const cnTop = 0;
+    const cnBottom = cnBaseline + cnDescent;
+    //  英文
+    const enTop = showCn ? (cnBottom + cnEnGap) : 0;
+    const enBaseline = enTop + enAscent;
+    const enBottom = enBaseline + enDescent;
+    //  色条中心对齐中文中心
+    const cnCenter = cnBaseline - cnFontSize * 0.4;
+    const barTop = cnCenter - barHeight / 2;
+    const barBottom = barTop + barHeight;
+    //  单条条目内容实际占用的垂直范围（留一点上下呼吸空间）
+    const contentTop = Math.min(cnTop, enTop, barTop);
+    const contentBottom = Math.max(cnBottom, enBottom, barBottom);
+    const entryHeight = (contentBottom - contentTop) + 4;
 
-    // 文字宽度估算：CJK ≈ 字号，其他 ≈ 字号 * 0.6
+    // 因为我们要把内容整体放在"条目"顶部下方 contentTop 偏移处
+    const shiftY = -contentTop + 2;
+
+    // ===== 文字宽度估算 =====
     function estimateTextWidth(line) {
       let cnW = 0, enW = 0;
       if (showCn) {
         for (const ch of (line.name || '')) {
           const isCJK = /[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef]/.test(ch);
-          cnW += isCJK ? cnFontSize : cnFontSize * 0.6;
+          cnW += isCJK ? cnFontSize : cnFontSize * 0.58;
         }
       }
       if (showEn) {
         for (const ch of (line.nameEn || '')) {
           const isCJK = /[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef]/.test(ch);
-          enW += isCJK ? enFontSize : enFontSize * 0.6;
+          enW += isCJK ? enFontSize : enFontSize * 0.58;
         }
       }
-      return Math.max(cnW, enW, 20);
+      return Math.max(cnW, enW, 24);
     }
 
     const maxTextWidth = Math.max(...lines.map(estimateTextWidth));
-    const entryWidth = barWidth + textGap + maxTextWidth + 4;
+    const entryWidth = barWidth + textGap + maxTextWidth + 6;
     const totalLines = lines.length;
     const colCount = Math.ceil(totalLines / maxRows);
     const rowCount = Math.min(totalLines, maxRows);
 
-    const legendWidth = colCount * entryWidth + (colCount - 1) * colGap + pad * 2;
-    const legendHeight = rowCount * entryHeight + (rowCount - 1) * entryGap + pad * 2;
+    const legendWidth = colCount * entryWidth + (colCount - 1) * colGap + padH * 2;
+    const legendHeight = rowCount * entryHeight + (rowCount - 1) * entryGap + padV * 2;
 
+    // ===== 定位图例框 =====
     const corner = getLegendCorner();
     const margin = 20;
     let legendX, legendY;
@@ -352,106 +370,80 @@ const Export = (() => {
     bgRect.setAttribute('width', legendWidth);
     bgRect.setAttribute('height', legendHeight);
     bgRect.setAttribute('fill', '#ffffff');
-    bgRect.setAttribute('fill-opacity', '0.85');
+    bgRect.setAttribute('fill-opacity', '0.9');
     bgRect.setAttribute('stroke', '#cbd5e1');
     bgRect.setAttribute('stroke-width', '1');
     bgRect.setAttribute('rx', '4');
     group.appendChild(bgRect);
 
+    // ===== 画每个条目 =====
     lines.forEach((line, i) => {
-      const col = Math.floor(i / maxRows); // 第几列
-      const row = i % maxRows; // 第几行
-      const entryX = legendX + pad + col * (entryWidth + colGap);
-      const entryY = legendY + pad + row * (entryHeight + entryGap);
+      const col = Math.floor(i / maxRows);
+      const row = i % maxRows;
+      const entryX = legendX + padH + col * (entryWidth + colGap);
+      const entryY = legendY + padV + row * (entryHeight + entryGap);
       const lineType = line.type || 'normal';
 
-      if (lineType === 'highspeed') {
-        // 高铁线：两条实线 + 中间虚线
-        const midY = entryY + barHeight / 2;
-        // 上线
-        const topLine = document.createElementNS(SVG_NS, 'line');
-        topLine.setAttribute('x1', entryX);
-        topLine.setAttribute('y1', midY - barHeight * 0.35);
-        topLine.setAttribute('x2', entryX + barWidth);
-        topLine.setAttribute('y2', midY - barHeight * 0.35);
-        topLine.setAttribute('stroke', line.color || '#999999');
-        topLine.setAttribute('stroke-width', '1.5');
-        group.appendChild(topLine);
-        // 下线
-        const bottomLine = document.createElementNS(SVG_NS, 'line');
-        bottomLine.setAttribute('x1', entryX);
-        bottomLine.setAttribute('y1', midY + barHeight * 0.35);
-        bottomLine.setAttribute('x2', entryX + barWidth);
-        bottomLine.setAttribute('y2', midY + barHeight * 0.35);
-        bottomLine.setAttribute('stroke', line.color || '#999999');
-        bottomLine.setAttribute('stroke-width', '1.5');
-        group.appendChild(bottomLine);
-        // 中间虚线
-        const centerLine = document.createElementNS(SVG_NS, 'line');
-        centerLine.setAttribute('x1', entryX);
-        centerLine.setAttribute('y1', midY);
-        centerLine.setAttribute('x2', entryX + barWidth);
-        centerLine.setAttribute('y2', midY);
-        centerLine.setAttribute('stroke', line.color || '#999999');
-        centerLine.setAttribute('stroke-width', '2');
-        centerLine.setAttribute('stroke-dasharray', `${Math.max(3, barHeight * 0.6)} ${Math.max(2, barHeight * 0.4)}`);
-        group.appendChild(centerLine);
-      } else if (lineType === 'hollow') {
-        // 空心线：外框 + 内白芯
-        const outerBar = document.createElementNS(SVG_NS, 'rect');
-        outerBar.setAttribute('x', entryX);
-        outerBar.setAttribute('y', entryY);
-        outerBar.setAttribute('width', barWidth);
-        outerBar.setAttribute('height', barHeight);
-        outerBar.setAttribute('fill', line.color || '#999999');
-        outerBar.setAttribute('rx', '1');
-        group.appendChild(outerBar);
+      const bX = entryX;
+      const bY = entryY + shiftY + barTop;   // 色条实际y
+      const tX = entryX + barWidth + textGap; // 文字x
+      const cnY = entryY + shiftY + cnBaseline;
+      const enY = entryY + shiftY + enBaseline;
 
-        const innerInset = Math.max(0.5, barWidth * 0.25);
-        const innerBar = document.createElementNS(SVG_NS, 'rect');
-        innerBar.setAttribute('x', entryX + innerInset);
-        innerBar.setAttribute('y', entryY + innerInset);
-        innerBar.setAttribute('width', Math.max(0.5, barWidth - innerInset * 2));
-        innerBar.setAttribute('height', Math.max(0.5, barHeight - innerInset * 2));
-        innerBar.setAttribute('fill', '#ffffff');
-        innerBar.setAttribute('rx', '0.5');
-        group.appendChild(innerBar);
-      } else if (lineType === 'dashed') {
-        // 虚线：用虚线笔触的线
-        const lineEl = document.createElementNS(SVG_NS, 'line');
-        lineEl.setAttribute('x1', entryX);
-        lineEl.setAttribute('y1', entryY + barHeight / 2);
-        lineEl.setAttribute('x2', entryX + barWidth);
-        lineEl.setAttribute('y2', entryY + barHeight / 2);
-        lineEl.setAttribute('stroke', line.color || '#999999');
-        lineEl.setAttribute('stroke-width', barHeight);
-        lineEl.setAttribute('stroke-dasharray', `${Math.max(3, barHeight * 0.8)} ${Math.max(2, barHeight * 0.5)}`);
-        lineEl.setAttribute('stroke-linecap', 'butt');
-        group.appendChild(lineEl);
-      } else {
-        // 普通线
-        const bar = document.createElementNS(SVG_NS, 'rect');
-        bar.setAttribute('x', entryX);
-        bar.setAttribute('y', entryY);
-        bar.setAttribute('width', barWidth);
-        bar.setAttribute('height', barHeight);
-        bar.setAttribute('fill', line.color || '#999999');
-        bar.setAttribute('rx', '2');
-        group.appendChild(bar);
+      function drawLineSample(drawAtX, drawAtY, drawW, drawH) {
+        const midY = drawAtY + drawH / 2;
+        if (lineType === 'highspeed') {
+          const top = document.createElementNS(SVG_NS, 'line');
+          top.setAttribute('x1', drawAtX); top.setAttribute('y1', midY - drawH * 0.35);
+          top.setAttribute('x2', drawAtX + drawW); top.setAttribute('y2', midY - drawH * 0.35);
+          top.setAttribute('stroke', line.color || '#999'); top.setAttribute('stroke-width', '1.5');
+          group.appendChild(top);
+          const bot = document.createElementNS(SVG_NS, 'line');
+          bot.setAttribute('x1', drawAtX); bot.setAttribute('y1', midY + drawH * 0.35);
+          bot.setAttribute('x2', drawAtX + drawW); bot.setAttribute('y2', midY + drawH * 0.35);
+          bot.setAttribute('stroke', line.color || '#999'); bot.setAttribute('stroke-width', '1.5');
+          group.appendChild(bot);
+          const mid = document.createElementNS(SVG_NS, 'line');
+          mid.setAttribute('x1', drawAtX); mid.setAttribute('y1', midY);
+          mid.setAttribute('x2', drawAtX + drawW); mid.setAttribute('y2', midY);
+          mid.setAttribute('stroke', line.color || '#999'); mid.setAttribute('stroke-width', '2');
+          mid.setAttribute('stroke-dasharray', `${Math.max(3, drawH * 0.6)} ${Math.max(2, drawH * 0.4)}`);
+          group.appendChild(mid);
+        } else if (lineType === 'hollow') {
+          const outer = document.createElementNS(SVG_NS, 'rect');
+          outer.setAttribute('x', drawAtX); outer.setAttribute('y', drawAtY);
+          outer.setAttribute('width', drawW); outer.setAttribute('height', drawH);
+          outer.setAttribute('fill', line.color || '#999'); outer.setAttribute('rx', '1');
+          group.appendChild(outer);
+          const inset = Math.max(0.6, drawW * 0.28);
+          const inner = document.createElementNS(SVG_NS, 'rect');
+          inner.setAttribute('x', drawAtX + inset); inner.setAttribute('y', drawAtY + inset);
+          inner.setAttribute('width', Math.max(0.6, drawW - inset * 2));
+          inner.setAttribute('height', Math.max(0.6, drawH - inset * 2));
+          inner.setAttribute('fill', '#ffffff'); inner.setAttribute('rx', '0.5');
+          group.appendChild(inner);
+        } else if (lineType === 'dashed') {
+          const l = document.createElementNS(SVG_NS, 'line');
+          l.setAttribute('x1', drawAtX); l.setAttribute('y1', drawAtY + drawH / 2);
+          l.setAttribute('x2', drawAtX + drawW); l.setAttribute('y2', drawAtY + drawH / 2);
+          l.setAttribute('stroke', line.color || '#999'); l.setAttribute('stroke-width', drawH);
+          l.setAttribute('stroke-dasharray', `${Math.max(3, drawH * 0.8)} ${Math.max(2, drawH * 0.5)}`);
+          l.setAttribute('stroke-linecap', 'butt');
+          group.appendChild(l);
+        } else {
+          const bar = document.createElementNS(SVG_NS, 'rect');
+          bar.setAttribute('x', drawAtX); bar.setAttribute('y', drawAtY);
+          bar.setAttribute('width', drawW); bar.setAttribute('height', drawH);
+          bar.setAttribute('fill', line.color || '#999'); bar.setAttribute('rx', '2');
+          group.appendChild(bar);
+        }
       }
-
-      const textX = entryX + barWidth + textGap;
-      // 文字块顶部垂直居中于条目高度内
-      const textBlockTop = entryY + (entryHeight - textBlockTotalHeight) / 2;
-      const cnBaselineY = textBlockTop + cnFontSize * 0.85;
-      const enBaselineY = showCn
-        ? cnBaselineY + cnEnGap + enFontSize * 0.9
-        : textBlockTop + enFontSize * 0.85;
+      drawLineSample(bX, bY, barWidth, barHeight);
 
       if (showCn) {
         const nameCn = document.createElementNS(SVG_NS, 'text');
-        nameCn.setAttribute('x', textX);
-        nameCn.setAttribute('y', cnBaselineY);
+        nameCn.setAttribute('x', tX);
+        nameCn.setAttribute('y', cnY);
         nameCn.setAttribute('font-size', String(cnFontSize));
         nameCn.setAttribute('font-weight', 'bold');
         nameCn.setAttribute('font-family', 'Microsoft YaHei, sans-serif');
@@ -462,8 +454,8 @@ const Export = (() => {
 
       if (showEn) {
         const nameEn = document.createElementNS(SVG_NS, 'text');
-        nameEn.setAttribute('x', textX);
-        nameEn.setAttribute('y', enBaselineY);
+        nameEn.setAttribute('x', tX);
+        nameEn.setAttribute('y', enY);
         nameEn.setAttribute('font-size', String(enFontSize));
         nameEn.setAttribute('font-family', 'Microsoft YaHei, sans-serif');
         nameEn.setAttribute('fill', '#64748b');
