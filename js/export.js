@@ -708,7 +708,7 @@ if __name__ == '__main__':
   let mespeakReady = false;
   let mespeakInitPromise = null;
 
-  // 初始化 meSpeak：加载中英文语音模块（仅需一次）
+  // 初始化 meSpeak：串行加载中英文语音模块（避免并行加载导致 worker 内语音状态竞态）
   function initMeSpeak() {
     if (mespeakReady) return Promise.resolve(true);
     if (mespeakInitPromise) return mespeakInitPromise;
@@ -717,25 +717,31 @@ if __name__ == '__main__':
         reject(new Error('meSpeak 未加载'));
         return;
       }
-      // 用计数器等待两个语音都回调完毕再判定，避免并行竞态导致先到者误判失败
-      let zhOk = false, enOk = false, settled = false;
-      let pending = 2;
-      function checkDone() {
-        if (settled) return;
-        if (pending > 0) return; // 还有语音未回调
-        settled = true;
-        if (zhOk && enOk) {
-          mespeakReady = true;
-          resolve(true);
-        } else {
-          reject(new Error('语音模块加载失败 zh=' + zhOk + ' en=' + enOk));
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) { settled = true; reject(new Error('语音模块加载超时')); }
+      }, 12000);
+
+      // 串行加载：先中文，再英文，确保 worker 内语音状态不被覆盖
+      meSpeak.loadVoice('zh', (zhSuccess) => {
+        if (!settled && !zhSuccess) {
+          settled = true;
+          clearTimeout(timer);
+          reject(new Error('中文语音模块加载失败'));
+          return;
         }
-      }
-      // 加载中文语音 (voices/zh.json) 与英文语音 (voices/en/en-us.json)
-      meSpeak.loadVoice('zh', (success) => { zhOk = !!success; pending--; checkDone(); });
-      meSpeak.loadVoice('en/en-us', (success) => { enOk = !!success; pending--; checkDone(); });
-      // 超时保护（8 秒）
-      setTimeout(() => { if (!settled) { settled = true; reject(new Error('语音模块加载超时')); } }, 8000);
+        meSpeak.loadVoice('en/en-us', (enSuccess) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (zhSuccess && enSuccess) {
+            mespeakReady = true;
+            resolve(true);
+          } else {
+            reject(new Error('语音模块加载失败 zh=' + zhSuccess + ' en=' + enSuccess));
+          }
+        });
+      });
     });
     return mespeakInitPromise;
   }
@@ -749,13 +755,18 @@ if __name__ == '__main__':
         if (!settled) { settled = true; resolve(null); }
       }, 30000);
       try {
+        // 每次合成前显式设置默认语音，防止 voice 参数失效时回退到错误语音
+        if (meSpeak.setDefaultVoice && meSpeak.isVoiceLoaded(voice)) {
+          meSpeak.setDefaultVoice(voice);
+        }
         meSpeak.speak(text, {
           rawdata: true,
           voice: voice,
           amplitude: 100,
           pitch: 50,
           speed: 175,
-          wordgap: 0
+          wordgap: 0,
+          b: 1  // 显式指定 UTF-8 编码，确保中文字符被正确解析
         }, (success, id, audiodata) => {
           if (settled) return;
           settled = true;
